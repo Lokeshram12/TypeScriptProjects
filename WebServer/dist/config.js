@@ -1,3 +1,3 @@
 export let config = {
-    fileserverHits: 0
+    fileServerHits: 0
 };

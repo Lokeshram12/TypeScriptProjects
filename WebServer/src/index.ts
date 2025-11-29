@@ -1,53 +1,33 @@
 import express from "express";
-import { Request, Response ,NextFunction} from "express";
-import { config } from "./config.js";
+import type { Request, Response, NextFunction } from "express";
+import { handlerReadiness } from "./api/readiness.js";
+import { handlerMetrics } from "./api/metrics.js";
+import { handlerReset } from "./api/reset.js";
+import {
+  middlewareLogResponse,
+  middlewareMetricsInc,
+} from "./api/middleware.js";
+import { handlerChirpsValidate } from "./api/chirps.js";
+import { errorHandler } from "./api/errorHandler.js";
 const app = express();
 const PORT = 8080;
 
-function middlewareLogResponses(req: Request, res: Response, next: NextFunction) {
-    res.on("finish", () => {
-        if (res.statusCode !== 200) {
-            console.log(`[NON-OK] ${req.method} ${req.url} - Status: ${res.statusCode}`);
-        }
-    });
-    next();
-}
+app.use(middlewareLogResponse);
+app.use(express.json());
 
-function middlewareMetricsInc(req: Request, res: Response, next: NextFunction) {
-  config.fileserverHits++;
-    next();
-}
+app.use("/app", middlewareMetricsInc, express.static("./src/app"));
 
-app.use(middlewareLogResponses);
+app.get("/api/healthz", handlerReadiness);
+app.get("/admin/metrics", handlerMetrics);
+app.post("/admin/reset", handlerReset);
 
-app.use("/app", middlewareMetricsInc,express.static("./src/app"));
-
-app.get("/api/healthz", (req: Request, res: Response) => {
-    res.set("Content-Type", "text/plain; charset=utf-8");
-    res.send("OK");
+const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    fn(req, res, next).catch(next);
+  };
+};
+app.post("/api/validate_chirp", asyncHandler(handlerChirpsValidate));
+app.use(errorHandler);
+app.listen(PORT, () => {
+  console.log(`Server is running at http://localhost:${PORT}`);
 });
-
-
-app.get("/admin/metrics", (req: Request, res: Response) => {
-    res.set("Content-Type", "text/html; charset=utf-8");
-    res.send(`
-<html>
-  <body>
-    <h1>Welcome, Chirpy Admin</h1>
-    <p>Chirpy has been visited ${config.fileserverHits} times!</p>
-  </body>
-</html>
-    `);
-});
-
-app.get("/admin/reset", (req: Request, res: Response) => {
-    config.fileserverHits = 0;
-    res.set("Content-Type", "text/plain; charset=utf-8");
-    res.send("Hits reset to 0");
-});
-
-
-app.listen(PORT,()=>{
-    console.log(`Server is running at http://localhost:${PORT}/`);
-});
-

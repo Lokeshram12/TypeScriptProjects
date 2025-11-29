@@ -1,41 +1,25 @@
 import express from "express";
-import { config } from "./config.js";
+import { handlerReadiness } from "./api/readiness.js";
+import { handlerMetrics } from "./api/metrics.js";
+import { handlerReset } from "./api/reset.js";
+import { middlewareLogResponse, middlewareMetricsInc, } from "./api/middleware.js";
+import { handlerChirpsValidate } from "./api/chirps.js";
+import { errorHandler } from "./api/errorHandler.js";
 const app = express();
 const PORT = 8080;
-function middlewareLogResponses(req, res, next) {
-    res.on("finish", () => {
-        if (res.statusCode !== 200) {
-            console.log(`[NON-OK] ${req.method} ${req.url} - Status: ${res.statusCode}`);
-        }
-    });
-    next();
-}
-function middlewareMetricsInc(req, res, next) {
-    config.fileserverHits++;
-    next();
-}
-app.use(middlewareLogResponses);
+app.use(middlewareLogResponse);
+app.use(express.json());
 app.use("/app", middlewareMetricsInc, express.static("./src/app"));
-app.get("/api/healthz", (req, res) => {
-    res.set("Content-Type", "text/plain; charset=utf-8");
-    res.send("OK");
-});
-app.get("/admin/metrics", (req, res) => {
-    res.set("Content-Type", "text/html; charset=utf-8");
-    res.send(`
-<html>
-  <body>
-    <h1>Welcome, Chirpy Admin</h1>
-    <p>Chirpy has been visited ${config.fileserverHits} times!</p>
-  </body>
-</html>
-    `);
-});
-app.get("/admin/reset", (req, res) => {
-    config.fileserverHits = 0;
-    res.set("Content-Type", "text/plain; charset=utf-8");
-    res.send("Hits reset to 0");
-});
+app.get("/api/healthz", handlerReadiness);
+app.get("/admin/metrics", handlerMetrics);
+app.post("/admin/reset", handlerReset);
+const asyncHandler = (fn) => {
+    return (req, res, next) => {
+        fn(req, res, next).catch(next);
+    };
+};
+app.post("/api/validate_chirp", asyncHandler(handlerChirpsValidate));
+app.use(errorHandler);
 app.listen(PORT, () => {
-    console.log(`Server is running at http://localhost:${PORT}/`);
+    console.log(`Server is running at http://localhost:${PORT}`);
 });
