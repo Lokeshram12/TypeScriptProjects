@@ -5,6 +5,7 @@ import { handlerReset } from "./api/reset.js";
 import { middlewareLogResponse, middlewareMetricsInc, } from "./api/middleware.js";
 import { handlerChirpsValidate } from "./api/chirps.js";
 import { errorHandler } from "./api/errorHandler.js";
+import { handlerCreateUser } from "./api/users.js";
 const app = express();
 const PORT = 8080;
 app.use(middlewareLogResponse);
@@ -19,6 +20,7 @@ const asyncHandler = (fn) => {
     };
 };
 app.post("/api/validate_chirp", asyncHandler(handlerChirpsValidate));
+app.post("/api/users", handlerCreateUser);
 app.use(errorHandler);
 app.listen(PORT, () => {
     console.log(`Server is running at http://localhost:${PORT}`);
