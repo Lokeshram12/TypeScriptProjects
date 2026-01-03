@@ -1,6 +1,6 @@
-import { it,test, expect,describe } from "vitest";
+import { it,test, expect,describe,beforeEach,vi } from "vitest";
 import { normalizeURL,getH1FromHTML ,getFirstParagraphFromHTML,getURLsFromHTML
-    ,getImagesFromHTML
+    ,getImagesFromHTML,extractPageData,getHTML,crawlPage
 } from "./crawl";
 
 test("normalizeURL protocol", () => {
@@ -30,8 +30,6 @@ test("normalizeURL http", () => {
   const expected = "blog.boot.dev/path";
   expect(actual).toEqual(expected);
 });
-
-
 
 describe('getH1FromHTML', () => {
   it('returns the text content of the h1 tag', () => {
@@ -85,7 +83,6 @@ describe('getH1FromHTML', () => {
     expect(getH1FromHTML(html)).toBe('Hello World')
   })
 })
-
 
 describe('getFirstParagraphFromHTML', () => {
   it('returns the first paragraph inside <main> if it exists', () => {
@@ -199,3 +196,109 @@ describe('getImagesFromHTML', () => {
     expect(actual).toEqual([])
   })
 })
+
+test("extractPageData basic", () => {
+  const inputURL = "https://blog.boot.dev";
+  const inputBody = `
+    <html><body>
+      <h1>Test Title</h1>
+      <p>This is the first paragraph.</p>
+      <a href="/link1">Link 1</a>
+      <img src="/image1.jpg" alt="Image 1">
+    </body></html>
+  `;
+
+  const actual = extractPageData(inputBody, inputURL);
+  const expected = {
+    url: "https://blog.boot.dev",
+    h1: "Test Title",
+    first_paragraph: "This is the first paragraph.",
+    outgoing_links: ["https://blog.boot.dev/link1"],
+    image_urls: ["https://blog.boot.dev/image1.jpg"],
+  };
+
+  expect(actual).toEqual(expected);
+});
+
+describe("getHTML", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("returns HTML when response is 200 and content-type is text/html", async () => {
+    const mockHTML = "<html><body>Hello</body></html>"
+
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      status: 200,
+      headers: {
+        get: () => "text/html",
+      },
+      text: async () => mockHTML,
+    } as any)
+
+    const result = await getHTML("https://example.com")
+
+    expect(result).toBe(mockHTML)
+  })
+
+  it("returns undefined for 404 responses", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      status: 404,
+      headers: {
+        get: () => "text/html",
+      },
+    } as any)
+
+    const result = await getHTML("https://example.com")
+
+    expect(result).toBeUndefined()
+  })
+
+  it("returns undefined for non-html content", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      status: 200,
+      headers: {
+        get: () => "application/json",
+      },
+    } as any)
+
+    const result = await getHTML("https://example.com")
+
+    expect(result).toBeUndefined()
+  })
+
+  it("handles fetch throwing an error", async () => {
+    vi.spyOn(global, "fetch").mockRejectedValue(
+      new Error("Network error")
+    )
+
+    const result = await getHTML("https://example.com")
+
+    expect(result).toBeUndefined()
+  })
+})
+
+
+vi.mock("./crawl", async () => {
+  const original = await vi.importActual("./crawl");
+  return {
+    ...original,
+    getHTML: vi.fn(async (url: string) => {
+      if (url === "https://example.com") return '<a href="/page1">Page 1</a>';
+      if (url === "https://example.com/page1") return '<a href="/page2">Page 2</a>';
+      if (url === "https://example.com/page2") return '';
+      return '';
+    }),
+  };
+});
+
+describe("crawlPage", () => {
+  it("crawls all internal pages", async () => {
+    const pages = await crawlPage("https://example.com");
+    expect(pages).toEqual({
+      "example.com": 1,
+      "example.com/page1": 1,
+      "example.com/page2": 1,
+    });
+  });
+});
